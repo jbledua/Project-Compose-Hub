@@ -1,0 +1,50 @@
+---
+services:
+  ha-ts:
+    image: tailscale/tailscale:latest
+    container_name: ${STACK_NAME}-ts
+    hostname: ${TS_HOSTNAME}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - "TS_EXTRA_ARGS=--advertise-tags=tag:container --reset"
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+    volumes:
+      - ha-ts-state:/var/lib/tailscale
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - net_admin
+    restart: unless-stopped
+    # Publish Home Assistant's UI port via the Tailscale service
+    ports:
+      - "${PUBLIC_PORT:-8123}:8123"
+
+  ha-app:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: ${STACK_NAME}-app
+    network_mode: service:ha-ts
+    depends_on:
+      - ha-ts
+    environment:
+      - TZ=${TIMEZONE:-UTC}
+      # Optional: set to true if using integrations that discover devices on LAN subnets
+      # behind Tailscale subnets/routes. Requires proper routing on your Tailnet.
+      # - ENABLE_DISCOVERY=true
+    volumes:
+      - ha-config:/config
+      # Optional: map localtime for accurate logs
+      # - /etc/localtime:/etc/localtime:ro
+    # If using USB radios (Zigbee/Z-Wave), uncomment devices below and ensure permissions
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
+    #   - /dev/ttyACM0:/dev/ttyACM0
+    restart: unless-stopped
+
+volumes:
+  ha-ts-state:
+    name: ${STACK_NAME}-state
+    driver: local
+  ha-config:
+    name: ${STACK_NAME}-config
+    driver: local
